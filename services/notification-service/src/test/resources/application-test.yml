@@ -1,0 +1,5 @@
+# Les tests ne dépendent pas du Config Server
+spring:
+  cloud:
+    config:
+      enabled: false

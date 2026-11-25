@@ -1,0 +1,11 @@
+# Réglages communs à tous les services (le fichier <service>.yml passe devant celui-ci)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

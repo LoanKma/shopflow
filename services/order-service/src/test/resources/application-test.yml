@@ -6,6 +6,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
-
-catalog:
-  url: http://localhost:0
+  # Les tests ne dépendent pas du Config Server
+  cloud:
+    config:
+      enabled: false

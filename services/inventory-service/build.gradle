@@ -48,6 +48,10 @@ dependencies {
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
+    // Événements de commande échangés par Kafka (topic order-events).
+    // Spring Boot 4 : le démarreur apporte spring-kafka ET sa configuration automatique (KafkaTemplate, listeners)
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 

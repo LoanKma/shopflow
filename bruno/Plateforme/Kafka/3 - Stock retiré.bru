@@ -1,0 +1,22 @@
+meta {
+  name: 3 - Stock retiré
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{inventory}}/api/v1/stock/1
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  // Laisser à inventory-service le temps de lire l'événement CREATED
+  await bru.sleep(1000);
+}
+
+tests {
+  test("quantity 8", function () {
+    expect(res.getBody().quantity).to.equal(8);
+  });
+}

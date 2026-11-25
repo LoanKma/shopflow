@@ -10,6 +10,11 @@ get {
   auth: none
 }
 
+script:pre-request {
+  // L'annulation de la commande du dossier order-service remet le stock via Kafka : on lui laisse 1 s
+  await bru.sleep(1000);
+}
+
 tests {
   test("200", function () {
     expect(res.getStatus()).to.equal(200);

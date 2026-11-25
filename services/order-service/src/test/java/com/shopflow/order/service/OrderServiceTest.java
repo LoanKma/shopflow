@@ -5,6 +5,8 @@ import com.shopflow.order.client.ProductView;
 import com.shopflow.order.dto.OrderLineRequest;
 import com.shopflow.order.dto.OrderResponse;
 import com.shopflow.order.dto.PlaceOrderRequest;
+import com.shopflow.order.event.OrderEvent;
+import com.shopflow.order.event.OrderEventType;
 import com.shopflow.order.exception.CatalogUnavailableException;
 import com.shopflow.order.exception.InvalidOrderException;
 import com.shopflow.order.model.Order;
@@ -12,12 +14,15 @@ import com.shopflow.order.model.OrderStatus;
 import com.shopflow.order.repository.OrderRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,6 +40,9 @@ class OrderServiceTest {
 
     @Mock
     CatalogGateway catalog;
+
+    @Mock
+    ApplicationEventPublisher events;
 
     @InjectMocks
     OrderService service;
@@ -64,6 +72,38 @@ class OrderServiceTest {
     }
 
     @Test
+    void place_publishes_a_created_event_with_the_lines() {
+        when(catalog.getActiveProduct(1L))
+                .thenReturn(new ProductView(1L, "KB-MECA-01", "Clavier mécanique", new BigDecimal("89.90"), true));
+        when(repository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.place(request(line(1L, 2)));
+
+        ArgumentCaptor<OrderEvent> captor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(events).publishEvent(captor.capture());
+        OrderEvent event = captor.getValue();
+        assertThat(event.type()).isEqualTo(OrderEventType.CREATED);
+        assertThat(event.customerId()).isEqualTo("c-1");
+        assertThat(event.total()).isEqualByComparingTo("179.80");
+        assertThat(event.lines()).containsExactly(new OrderEvent.Line(1L, 2));
+        assertThat(event.eventId()).isNotNull();
+    }
+
+    @Test
+    void cancel_publishes_a_cancelled_event() {
+        Order order = Order.pending("c-1");
+        order.addLine(1L, "Clavier", new BigDecimal("10.00"), 3);
+        when(repository.findWithLinesById(42L)).thenReturn(Optional.of(order));
+
+        service.cancel(42L);
+
+        ArgumentCaptor<OrderEvent> captor = ArgumentCaptor.forClass(OrderEvent.class);
+        verify(events).publishEvent(captor.capture());
+        assertThat(captor.getValue().type()).isEqualTo(OrderEventType.CANCELLED);
+        assertThat(captor.getValue().lines()).containsExactly(new OrderEvent.Line(1L, 3));
+    }
+
+    @Test
     void catalog_is_called_once_per_distinct_product() {
         when(catalog.getActiveProduct(1L))
                 .thenReturn(new ProductView(1L, "KB-MECA-01", "Clavier", new BigDecimal("10.00"), true));
@@ -81,6 +121,7 @@ class OrderServiceTest {
         assertThatThrownBy(() -> service.place(request(line(99L, 1))))
                 .isInstanceOf(InvalidOrderException.class);
         verify(repository, never()).save(any());
+        verify(events, never()).publishEvent(any());
     }
 
     @Test

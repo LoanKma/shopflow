@@ -1,0 +1,26 @@
+meta {
+  name: 7a - Commande produit 8 x 5 (stock 2)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{order}}/api/v1/orders
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "customerId": "c-kafka",
+    "lines": [
+      { "productId": 8, "quantity": 5 }
+    ]
+  }
+}
+
+tests {
+  test("201 côté commande : order-service ne connaît pas le stock", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+}

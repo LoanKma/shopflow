@@ -27,10 +27,6 @@ spring:
             read-timeout: 2000      # ms pour recevoir la réponse
             logger-level: basic
 
-# Adresse de catalog-service, appelé en direct
-catalog:
-  url: http://localhost:8081
-
 logging:
   level:
     # Le niveau DEBUG est nécessaire pour voir les logs Feign

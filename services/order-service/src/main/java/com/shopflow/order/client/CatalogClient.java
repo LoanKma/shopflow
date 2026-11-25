@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.PathVariable;
  * Client HTTP déclaratif vers catalog-service.
  * OpenFeign génère l'implémentation : on écrit seulement l'interface.
  *
- * L'adresse de catalog-service est lue dans application.yml (catalog.url).
+ * Pas d'URL : le nom catalog-service est résolu dans Eureka (avec répartition de charge).
  */
-@FeignClient(name = "catalog-service", url = "${catalog.url}")
+@FeignClient(name = "catalog-service")
 public interface CatalogClient {
 
     @GetMapping("/api/v1/products/{id}")

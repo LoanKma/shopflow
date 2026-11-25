@@ -1,0 +1,21 @@
+meta {
+  name: Stock du produit 1
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{inventory}}/api/v1/stock/1
+  body: none
+  auth: none
+}
+
+tests {
+  test("200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("quantity 10", function () {
+    expect(res.getBody().quantity).to.equal(10);
+  });
+}

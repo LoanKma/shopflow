@@ -1,0 +1,22 @@
+meta {
+  name: Produit inconnu
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{catalog}}/api/v1/products/999
+  body: none
+  auth: none
+}
+
+tests {
+  test("404", function () {
+    expect(res.getStatus()).to.equal(404);
+  });
+
+  test("ProblemDetail", function () {
+    expect(res.getHeader("content-type")).to.contain("application/problem+json");
+    expect(res.getBody().status).to.equal(404);
+  });
+}

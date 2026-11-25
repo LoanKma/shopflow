@@ -52,6 +52,31 @@ public class StockItem {
         this.quantity = newQuantity;
     }
 
+    /** Vrai si on peut retirer cette quantité sans passer sous zéro. */
+    public boolean canRemove(int amount) {
+        return amount <= quantity;
+    }
+
+    /** Retire du stock (commande créée). */
+    public void remove(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("La quantité à retirer doit être positive");
+        }
+        if (!canRemove(amount)) {
+            throw new IllegalStateException("Stock insuffisant pour le produit " + productId
+                    + " : " + quantity + " en stock, " + amount + " demandé(s)");
+        }
+        this.quantity -= amount;
+    }
+
+    /** Remet en stock (commande annulée). */
+    public void add(int amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("La quantité à remettre doit être positive");
+        }
+        this.quantity += amount;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

@@ -1,5 +1,20 @@
 # Réglages communs à tous les services (le fichier <service>.yml passe devant celui-ci)
 
+# Kafka : utilisé par order-service (producteur), inventory-service et notification-service (consommateurs)
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        # Pas d'en-tête avec le nom de la classe Java : chaque service a sa propre classe
+        spring.json.add.type.headers: false
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
 eureka:
   client:
     service-url:

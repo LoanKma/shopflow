@@ -1,0 +1,29 @@
+meta {
+  name: 2 - Eureka services inscrits
+  type: http
+  seq: 2
+}
+
+get {
+  url: http://localhost:8761/eureka/apps
+  body: none
+  auth: none
+}
+
+headers {
+  Accept: application/json
+}
+
+tests {
+  test("200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("les cinq services et la Gateway", function () {
+    const names = res.getBody().applications.application.map(a => a.name);
+    expect(names).to.include.members([
+      "CATALOG-SERVICE", "ORDER-SERVICE", "INVENTORY-SERVICE",
+      "PAYMENT-SERVICE", "NOTIFICATION-SERVICE", "GATEWAY"
+    ]);
+  });
+}

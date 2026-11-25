@@ -1,10 +1,10 @@
-# ShopFlow - version de base
+# ShopFlow
 
-Cette version contient les cinq microservices de ShopFlow avec leur code de base. Une seule communication existe entre eux : **order-service appelle catalog-service en synchrone avec OpenFeign**.
+Les cinq microservices de ShopFlow. Une seule communication existe entre eux : **order-service appelle catalog-service en synchrone avec OpenFeign**, protégé par un circuit breaker Resilience4j (partie 1).
 
-Elle ne contient ni Kafka, ni communication asynchrone, ni Resilience4j (circuit breaker, retry), ni Docker. Il n'y a pas non plus d'Eureka, de Gateway, de Config Server ni de sécurité : chaque service se lance seul avec `./gradlew bootRun`.
+Depuis la partie 2, la configuration est centralisée dans un **Config Server**, les services se trouvent par leur nom grâce à **Eureka**, et le client passe par une seule porte d'entrée, la **Gateway** (port 8080). Kafka et Docker arrivent dans les parties suivantes.
 
-Pile technique : Java 25, Spring Boot 4.2.0, Spring Cloud 2026.0.0 (pour OpenFeign seulement), Gradle Groovy 9.9.2, Lombok, springdoc-openapi 3.2.1, base H2 en mémoire.
+Pile technique : Java 25, Spring Boot 4.2.0, Spring Cloud 2026.0.0 (OpenFeign, Config, Eureka, Gateway), Resilience4j 2.4.0, Gradle Groovy 9.9.2, Lombok, springdoc-openapi 3.2.1, base H2 en mémoire.
 
 ## Les services
 
@@ -15,9 +15,18 @@ Pile technique : Java 25, Spring Boot 4.2.0, Spring Cloud 2026.0.0 (pour OpenFei
 | inventory-service | 8083 | H2 `inventory_db` | Stock de chaque produit |
 | payment-service | 8084 | H2 `payment_db` | Paiement simulé, refusé au-delà de 1 000 EUR |
 | notification-service | 8085 | aucune | E-mails écrits dans les logs |
+| config-server | 8888 | — | Sert la configuration de `config-repo/` |
+| discovery (Eureka) | 8761 | — | Annuaire des services, tableau de bord sur http://localhost:8761 |
+| gateway | 8080 | — | Porte d'entrée unique, une route par service |
 
 ```
-shopflow-base/
+shopflow/
+├── config-repo/                application.yml (commun), <service>.yml, gateway.yml (routes)
+├── infrastructure/
+│   ├── config-server/
+│   ├── discovery/
+│   └── gateway/
+├── bruno/                      collection Bruno (environnements local et gateway)
 └── services/
     ├── catalog-service/
     ├── order-service/          client/CatalogClient.java     interface OpenFeign
@@ -28,23 +37,35 @@ shopflow-base/
     └── notification-service/
 ```
 
-Chaque service est un projet Gradle autonome qui a son propre wrapper.
+Chaque service et chaque brique d'infrastructure est un projet Gradle autonome qui a son propre wrapper.
 
 ## Démarrer
 
 Rien à installer à part un JDK 25 : chaque base H2 est créée en mémoire au démarrage du service.
 
-Ouvrir un terminal par service :
+Ouvrir un terminal par projet, **dans cet ordre** :
 
 ```bash
+# 1. L'infrastructure : le Config Server d'abord (les autres y lisent leur configuration)
+cd infrastructure/config-server && ./gradlew bootRun
+cd infrastructure/discovery && ./gradlew bootRun
+
+# 2. Les services
 cd services/catalog-service && ./gradlew bootRun
 cd services/order-service && ./gradlew bootRun
 cd services/inventory-service && ./gradlew bootRun
 cd services/payment-service && ./gradlew bootRun
 cd services/notification-service && ./gradlew bootRun
+
+# 3. La Gateway
+cd infrastructure/gateway && ./gradlew bootRun
 ```
 
-Il faut démarrer catalog-service avant de passer des commandes. Les autres services peuvent être lancés dans n'importe quel ordre.
+Le config-server doit être lancé depuis son dossier : il lit `../../config-repo`. Les services démarrent aussi sans lui (import `optional:`), mais sans leur configuration (base, Feign, circuit breaker, adresse d'Eureka).
+
+Après le démarrage, comptez environ 30 secondes pour que les services se voient dans Eureka : avant, la Gateway peut répondre 503 et une commande « Catalogue indisponible ».
+
+Toutes les API sont accessibles par la Gateway sur `http://localhost:8080` (`/api/v1/products/**`, `/orders/**`, `/stock/**`, `/payments/**`, `/notifications/**`). Les endpoints `/actuator` ne sont pas routés : on les appelle directement sur le port du service.
 
 Pour chaque service :
 
@@ -53,7 +74,7 @@ Pour chaque service :
 - Console H2 (sauf notification-service) : `http://localhost:<port>/h2-console`, avec la JDBC URL `jdbc:h2:mem:<base>`, l'utilisateur `sa` et sans mot de passe
 - Tests : `./gradlew test`
 
-Les données sont perdues à chaque arrêt du service. Pour utiliser un PostgreSQL installé sur la machine, il suffit de modifier les trois lignes `datasource` de `application.yml` : le modèle est en commentaire dans le fichier, et le pilote PostgreSQL est déjà dans `build.gradle`.
+Les données sont perdues à chaque arrêt du service. Pour utiliser un PostgreSQL installé sur la machine, il suffit de modifier les trois lignes `datasource` de `config-repo/<service>.yml` : le modèle est en commentaire dans le fichier, et le pilote PostgreSQL est déjà dans `build.gradle`.
 
 ## La communication synchrone order-service vers catalog-service
 
@@ -63,8 +84,8 @@ client ──POST /api/v1/orders──> order-service ──GET /api/v1/products
                                      └── copie le nom et le prix dans la ligne de commande
 ```
 
-- L'adresse du catalogue se règle dans `order-service/src/main/resources/application.yml` : `catalog.url: http://localhost:8081`.
-- Les délais d'attente sont limités : 1 s pour se connecter, 2 s pour recevoir la réponse.
+- Pas d'adresse en dur : `@FeignClient(name = "catalog-service")` est résolu dans Eureka au moment de l'appel. Si plusieurs instances du catalogue tournent, les appels sont répartis entre elles.
+- Les délais d'attente sont limités (`config-repo/order-service.yml`) : 1 s pour se connecter, 2 s pour recevoir la réponse.
 - `CatalogGateway` traduit les erreurs :
   - produit inconnu (404 du catalogue) : la commande est refusée en 422 ;
   - produit inactif : 422 ;

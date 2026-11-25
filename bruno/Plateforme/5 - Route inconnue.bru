@@ -1,0 +1,17 @@
+meta {
+  name: 5 - Route inconnue
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{gateway}}/api/v1/inconnu
+  body: none
+  auth: none
+}
+
+tests {
+  test("404 : aucune route ne correspond", function () {
+    expect(res.getStatus()).to.equal(404);
+  });
+}

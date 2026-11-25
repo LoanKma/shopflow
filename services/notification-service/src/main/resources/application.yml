@@ -3,14 +3,8 @@ server:
 
 spring:
   application:
+    # Ce nom fait lire config-repo/notification-service.yml au Config Server
     name: notification-service
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
+  config:
+    # optional: le service démarre même si le Config Server est arrêté (mais sans sa configuration)
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}

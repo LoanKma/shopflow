@@ -6,6 +6,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+  # Les tests ne dépendent ni du Config Server ni d'Eureka
+  cloud:
+    config:
+      enabled: false
 
-catalog:
-  url: http://localhost:0
+eureka:
+  client:
+    enabled: false

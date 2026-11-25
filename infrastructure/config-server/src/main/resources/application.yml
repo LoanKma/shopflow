@@ -1,0 +1,21 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # native : lit des fichiers sur le disque au lieu d'un dépôt Git
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          # Chemin relatif au dossier du projet (bootRun) ; la variable CONFIG_REPO servira dans Docker
+          search-locations: ${CONFIG_REPO:file:../../config-repo}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,33 @@
+meta {
+  name: 9 - Commande rétablie (201)
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{order}}/api/v1/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "customerId": "c-1",
+    "lines": [
+      {
+        "productId": 1,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+tests {
+  test("201", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+}

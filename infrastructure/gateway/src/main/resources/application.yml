@@ -1,0 +1,9 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    # Ce nom fait lire config-repo/gateway.yml au Config Server
+    name: gateway
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}

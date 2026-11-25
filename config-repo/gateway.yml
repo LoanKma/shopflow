@@ -1,0 +1,28 @@
+# Routes de la Gateway : une par service. lb:// = adresse trouvée dans Eureka, avec répartition de charge.
+# Depuis Spring Cloud 2025, les routes sont sous spring.cloud.gateway.server.webflux (et non plus spring.cloud.gateway).
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: catalog
+              uri: lb://catalog-service
+              predicates:
+                - Path=/api/v1/products/**
+            - id: orders
+              uri: lb://order-service
+              predicates:
+                - Path=/api/v1/orders/**
+            - id: inventory
+              uri: lb://inventory-service
+              predicates:
+                - Path=/api/v1/stock/**
+            - id: payments
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/v1/payments/**
+            - id: notifications
+              uri: lb://notification-service
+              predicates:
+                - Path=/api/v1/notifications/**

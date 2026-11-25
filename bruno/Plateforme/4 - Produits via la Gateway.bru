@@ -1,0 +1,22 @@
+meta {
+  name: 4 - Produits via la Gateway
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{gateway}}/api/v1/products
+  body: none
+  auth: none
+}
+
+tests {
+  test("200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+
+  test("même résultat qu'en direct : 10 produits", function () {
+    expect(res.getBody().content).to.have.lengthOf(10);
+    expect(res.getBody().page.totalElements).to.equal(10);
+  });
+}

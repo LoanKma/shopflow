@@ -65,3 +65,51 @@ En plus, l'historique de main ne contient que des fusions de PR : chaque changem
   2. On crée un nouveau commit explicite (par exemple : `git commit -m "fix(order): prise en compte de la relecture"`).
   3. On pousse sur la même branche distante (`git push origin feature/1-resilience`).
   4. La Pull Request existante sur GitHub se met à jour automatiquement avec les nouveaux commits et le diff actualisé.
+
+## Partie 2 - Config Server, Eureka et Gateway
+
+### Q2.1 Que change le mot optional: dans l'import ? Quel risque prend-on en le laissant ?
+
+- **Sans `optional:`**, un service refuse de démarrer si le Config Server ne répond pas : il s'arrête dès le lancement avec une erreur.
+- **Avec `optional:`**, le service démarre quand même. Il continue simplement sans la configuration du serveur, avec seulement ce qu'il a en local (nom, port, import).
+- **Le risque :** le service démarre « à moitié configuré » sans que personne ne le remarque. Par exemple, order-service démarre sans ses timeouts Feign, sans les réglages du circuit breaker et sans l'adresse d'Eureka : il est UP, mais il ne se comporte pas comme prévu. L'erreur apparaît plus tard, de façon moins claire qu'un refus de démarrer. En production, on préfère souvent retirer `optional:` pour que la panne soit visible tout de suite.
+
+### Q2.2 Changez le niveau de log de Feign dans config-repo/order-service.yml puis redémarrez order-service sans le recompiler. Qu'est-ce que cela démontre ?
+
+Nous avons passé `logger-level` de `basic` à `full` dans `config-repo/order-service.yml`, puis redémarré order-service. Gradle affiche `compileJava UP-TO-DATE` : rien n'a été recompilé. Pourtant, chaque appel au catalogue affiche maintenant les en-têtes et le corps JSON de la réponse, et plus seulement la ligne `GET` et le code `200`.
+
+Cela démontre que **la configuration est séparée du code** : on change le comportement d'un service en modifiant un fichier du `config-repo`, sans toucher au JAR. Le même JAR peut donc tourner avec des réglages différents (local, test, production), et un changement de réglage ne demande ni nouvelle compilation ni nouvelle livraison, seulement un redémarrage.
+
+### Q2.3 L'attribut url a disparu. Qui transforme maintenant le nom catalog-service en adresse, et à quel moment ?
+
+C'est **Spring Cloud LoadBalancer**, utilisé par OpenFeign, qui s'appuie sur le **client Eureka** d'order-service :
+
+1. Au démarrage puis toutes les 30 s, le client Eureka d'order-service télécharge la liste des instances inscrites dans l'annuaire et la garde en cache.
+2. **À chaque appel** de `CatalogClient`, Feign demande au LoadBalancer une instance de `catalog-service`. Le LoadBalancer en choisit une dans cette liste (par exemple `172.21.0.90:8081`) et remplace `http://catalog-service` par son adresse réelle.
+
+La résolution se fait donc au moment de l'appel, et non au démarrage : si une instance apparaît ou disparaît, les appels suivants en tiennent compte, après la mise à jour du cache.
+
+### Q2.4 Lancez une seconde instance du catalogue avec ./gradlew bootRun --args="--server.port=8091". Passez six commandes. Que montrent les logs des deux instances ?
+
+Les deux instances apparaissent dans Eureka (`catalog-service:8081` et `catalog-service:8091`). Sur six commandes (produits 1 à 6), chaque instance reçoit **trois** appels, en alternance : 8081 reçoit les produits 1, 3 et 5, et 8091 les produits 2, 4 et 6. Le LoadBalancer répartit les appels à tour de rôle (*round robin*), sans qu'order-service connaisse les ports.
+
+On a aussi observé un piège : après l'arrêt brutal de l'instance 8091, elle est restée inscrite comme UP dans Eureka (mode d'auto-préservation), et une requête sur deux échouait en 500 jusqu'à sa désinscription. Les clients ne voient une instance disparaître qu'avec un délai (renouvellements, cache de 30 s) : c'est une bonne raison d'avoir un circuit breaker et un retry côté appelant.
+
+### Q2.5 Que signifie le préfixe lb:// ?
+
+`lb` signifie *load balancer*. `lb://catalog-service` veut dire : « ce n'est pas une adresse, c'est le **nom d'un service** à chercher dans Eureka ; choisis l'une de ses instances, avec répartition de charge ». La Gateway n'a donc aucune adresse en dur, et si on lance plusieurs instances d'un service, elle répartit les requêtes entre elles, comme Feign à la question Q2.4.
+
+### Q2.6 Citez trois responsabilités qu'on a intérêt à placer dans la Gateway plutôt que dans chaque service.
+
+1. **La sécurité :** vérifier l'authentification (jeton JWT, par exemple) une seule fois à l'entrée, au lieu de recoder la vérification dans chaque service.
+2. **Le CORS** (et plus largement les en-têtes HTTP communs) : un seul endroit dit quels sites web ont le droit d'appeler l'API.
+3. **La limitation du débit** (*rate limiting*) : protéger toute la plateforme contre un client qui envoie trop de requêtes.
+
+On peut aussi citer les logs d'accès et le traçage (un identifiant de requête ajouté à l'entrée), ou la réécriture des chemins et la gestion des versions d'API.
+
+### Q2.7 Cette Pull Request touche beaucoup de fichiers. Aurait-il été préférable de faire trois Pull Requests ? Donnez un avantage et un inconvénient.
+
+- **Avantage :** des PR plus petites (Config Server, puis Eureka, puis Gateway) sont plus faciles à relire et à tester. Le relecteur se concentre sur une seule brique, il repère mieux les erreurs, et chaque brique peut être fusionnée dès qu'elle est prête.
+- **Inconvénient :** les trois briques dépendent les unes des autres. La Gateway a besoin d'Eureka pour `lb://`, et les deux lisent leur configuration dans le Config Server. Il faut donc les fusionner dans l'ordre et rebaser les branches suivantes après chaque fusion, et certaines PR ne se testent pas seules (une Gateway sans Eureka ne route rien). Cela demande aussi plus de cycles de relecture pour le binôme.
+
+Ici, nous avons gardé une seule PR mais avec un commit par brique : le relecteur peut lire la PR commit par commit, ce qui donne une partie de l'avantage des petites PR sans leur inconvénient.

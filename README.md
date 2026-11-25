@@ -2,7 +2,9 @@
 
 Les cinq microservices de ShopFlow. Une seule communication existe entre eux : **order-service appelle catalog-service en synchrone avec OpenFeign**, protégé par un circuit breaker Resilience4j (partie 1).
 
-Depuis la partie 2, la configuration est centralisée dans un **Config Server**, les services se trouvent par leur nom grâce à **Eureka**, et le client passe par une seule porte d'entrée, la **Gateway** (port 8080). Kafka et Docker arrivent dans les parties suivantes.
+Depuis la partie 2, la configuration est centralisée dans un **Config Server**, les services se trouvent par leur nom grâce à **Eureka**, et le client passe par une seule porte d'entrée, la **Gateway** (port 8080).
+
+Depuis la partie 3, order-service publie un événement **Kafka** à chaque commande créée ou annulée : inventory-service met le stock à jour et notification-service prévient le client, sans qu'order-service les connaisse. Docker arrive à la partie 4.
 
 Pile technique : Java 25, Spring Boot 4.2.0, Spring Cloud 2026.0.0 (OpenFeign, Config, Eureka, Gateway), Resilience4j 2.4.0, Gradle Groovy 9.9.2, Lombok, springdoc-openapi 3.2.1, base H2 en mémoire.
 
@@ -41,11 +43,14 @@ Chaque service et chaque brique d'infrastructure est un projet Gradle autonome q
 
 ## Démarrer
 
-Rien à installer à part un JDK 25 : chaque base H2 est créée en mémoire au démarrage du service.
+Prérequis : un JDK 25 et Docker Desktop (pour Kafka). Chaque base H2 est créée en mémoire au démarrage du service.
 
 Ouvrir un terminal par projet, **dans cet ordre** :
 
 ```bash
+# 0. Kafka et Kafka UI (depuis la racine) : http://localhost:8090
+docker compose up -d
+
 # 1. L'infrastructure : le Config Server d'abord (les autres y lisent leur configuration)
 cd infrastructure/config-server && ./gradlew bootRun
 cd infrastructure/discovery && ./gradlew bootRun
@@ -174,6 +179,19 @@ curl -i http://localhost:8085/api/v1/notifications
 
 Pour faire tomber le catalogue, arrêter catalog-service (Ctrl+C dans son terminal), puis relancer la commande valide. On obtient alors un 503 immédiatement, alors qu'une commande existante se relit toujours (`GET /api/v1/orders/1`).
 
+## Les événements Kafka
+
+```
+order-service ──OrderEvent (CREATED, CANCELLED), clé = orderId──> topic order-events
+                                                                   ├─> inventory-service    (groupe inventory)    retire ou remet le stock
+                                                                   └─> notification-service (groupe notification) e-mail au client dans les logs
+```
+
+- **Publier après le commit :** `OrderService` publie un événement Spring, et `OrderEventPublisher` ne l'envoie à Kafka qu'une fois la transaction validée (`@TransactionalEventListener(phase = AFTER_COMMIT)`).
+- **Consommer une seule fois :** Kafka peut livrer un message deux fois. inventory-service note chaque `eventId` traité dans la table `processed_event`, dans la même transaction que le stock : un doublon est ignoré.
+- **Stock insuffisant :** si une ligne manque de stock, aucune ligne n'est modifiée et un avertissement est écrit dans les logs. La commande reste acceptée côté order-service (la Saga traitera ce cas plus tard). Si cette commande est annulée ensuite, rien n'est remis en stock.
+- Kafka UI (http://localhost:8090) affiche les messages du topic `order-events` et permet d'en republier un.
+
 ## Ce qui n'est pas encore branché
 
-inventory-service, payment-service et notification-service fonctionnent chacun de leur côté, mais order-service ne les appelle pas. Une commande reste donc au statut PENDING jusqu'à ce que le client l'annule. C'est le point de départ pour relier les services, en synchrone ou par événements.
+payment-service fonctionne seul : order-service ne l'appelle pas, et une commande reste au statut PENDING jusqu'à ce que le client l'annule. Un stock insuffisant n'annule pas non plus la commande : c'est le rôle de la Saga, dans un prochain TP.

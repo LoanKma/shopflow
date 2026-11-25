@@ -113,3 +113,80 @@ On peut aussi citer les logs d'accès et le traçage (un identifiant de requête
 - **Inconvénient :** les trois briques dépendent les unes des autres. La Gateway a besoin d'Eureka pour `lb://`, et les deux lisent leur configuration dans le Config Server. Il faut donc les fusionner dans l'ordre et rebaser les branches suivantes après chaque fusion, et certaines PR ne se testent pas seules (une Gateway sans Eureka ne route rien). Cela demande aussi plus de cycles de relecture pour le binôme.
 
 Ici, nous avons gardé une seule PR mais avec un commit par brique : le relecteur peut lire la PR commit par commit, ce qui donne une partie de l'avantage des petites PR sans leur inconvénient.
+
+## Partie 3 - Communication asynchrone avec Kafka
+
+### Q3.1 Pourquoi utiliser orderId comme clé de message ? Pensez à un CREATED suivi d'un CANCELLED pour la même commande.
+
+Kafka envoie tous les messages qui ont la même clé dans la **même partition**, et l'ordre n'est garanti qu'à l'intérieur d'une partition. Avec `orderId` comme clé, le CREATED et le CANCELLED d'une même commande sont lus dans l'ordre où ils ont été publiés.
+
+Sans clé (ou avec une clé aléatoire), les deux messages pourraient tomber dans deux partitions différentes, lues en parallèle. inventory-service pourrait alors recevoir le CANCELLED avant le CREATED : il remettrait en stock des articles jamais retirés, puis les retirerait, et le stock final serait faux.
+
+Dans les logs de notre test, les messages de la commande 1 ont bien la clé `1` et se suivent dans la partition 0 (offsets 0 puis 1).
+
+### Q3.2 Le même record est recopié dans trois services. Pourquoi ne pas en faire une bibliothèque partagée ?
+
+Une bibliothèque partagée **recouplerait les services** que Kafka vient de découpler :
+
+- Pour faire évoluer l'événement, il faudrait publier une nouvelle version de la bibliothèque, puis recompiler et redéployer les trois services en même temps. On perd l'indépendance de déploiement, qui est l'intérêt des microservices.
+- Chaque consommateur n'a besoin que d'une partie de l'événement. notification-service n'utilise pas les lignes, par exemple, et pourrait les retirer de sa copie.
+- Les services pourraient ne pas être tous écrits en Java.
+
+Le vrai contrat entre services, c'est le **format JSON** du message, pas une classe Java. C'est pour cela que le producteur n'envoie pas le nom de sa classe (`spring.json.add.type.headers: false`) : chaque service désérialise le JSON dans sa propre classe. En échange, il faut garder les copies compatibles, par exemple en ajoutant des champs sans en supprimer.
+
+### Q3.3 L'événement contient les lignes de la commande. Que devrait faire inventory-service s'il ne recevait que l'orderId ?
+
+Il devrait **rappeler order-service** en synchrone (`GET /api/v1/orders/{id}`) pour connaître les produits et les quantités avant de modifier le stock.
+
+Cela changerait beaucoup le couplage :
+
+- inventory-service dépendrait de nouveau d'order-service : il devrait connaître son API, et order-service devrait être allumé au moment où le message est traité. On retrouverait les problèmes de la partie 1 (timeouts, circuit breaker, pannes en cascade).
+- Chaque événement provoquerait un appel HTTP supplémentaire vers order-service.
+- Il y aurait un risque d'incohérence : au moment du rappel, la commande a peut-être déjà changé (annulée entre-temps), et on lirait son état actuel plutôt que celui au moment de l'événement.
+
+Un événement « complet » (*event-carried state transfer*) contient tout ce dont les consommateurs ont besoin : ils n'ont jamais à rappeler l'émetteur.
+
+### Q3.4 Pourquoi ne pas appeler kafka.send directement dans place ? Décrivez le scénario qui poserait problème.
+
+Parce que l'envoi à Kafka et l'enregistrement en base ne sont pas dans la même transaction. Si on envoie l'événement **avant** que la base ait validé, on peut annoncer une commande qui n'existe pas.
+
+Scénario, avec `cancel()` qui est `@Transactional` :
+
+1. `order.cancel()` passe la commande à CANCELLED en mémoire ;
+2. `kafka.send(CANCELLED)` part tout de suite : inventory-service remet le stock, notification-service envoie l'e-mail « annulée » ;
+3. au commit, la base échoue (conflit, contrainte, base indisponible) et la transaction est annulée (*rollback*).
+
+Résultat : en base, la commande est toujours PENDING, mais le stock a été remis et le client a reçu un e-mail d'annulation. L'événement a annoncé quelque chose qui n'a jamais eu lieu, et on ne peut pas rappeler un message Kafka déjà envoyé.
+
+Avec `@TransactionalEventListener(phase = AFTER_COMMIT)`, l'envoi n'a lieu qu'une fois le commit réussi : en cas de rollback, rien ne part.
+
+### Q3.5 Si Kafka est arrêté au moment du commit, la commande existe mais l'événement est perdu. Quel patron de conception corrige ce défaut ?
+
+Le patron **Transactional Outbox** (boîte d'envoi transactionnelle).
+
+Dans la même transaction que la commande, on enregistre l'événement dans une table `outbox` de la base d'order-service : soit les deux sont enregistrés, soit aucun. Un processus séparé (une tâche planifiée, ou un outil comme Debezium qui lit le journal de la base) lit ensuite cette table et publie les événements dans Kafka, en réessayant tant que Kafka ne répond pas, puis les marque comme envoyés.
+
+### Q3.6 inventory-service et notification-service lisent le même topic. Pourquoi reçoivent-ils chacun tous les messages ? Que se passerait-il avec le même groupId ?
+
+Kafka distribue les messages **par groupe de consommateurs**. Chaque groupe a sa propre position de lecture (*offset*) dans le topic et reçoit tous les messages. Comme inventory-service est dans le groupe `inventory` et notification-service dans le groupe `notification`, ils lisent le topic chacun de leur côté, sans se gêner.
+
+Avec le **même groupId**, les deux services formeraient un seul groupe. Kafka se **partagerait** alors les messages entre eux : chaque message ne serait lu que par l'un des deux. Notre topic n'a qu'une partition, donc un seul des deux services recevrait tout, et l'autre rien. Avec plusieurs partitions, chacun recevrait une partie des commandes : certaines commandes retireraient du stock sans e-mail, d'autres enverraient un e-mail sans toucher au stock.
+
+Le même groupId sert au contraire à **répartir la charge** entre plusieurs instances d'un même service, par exemple deux instances d'inventory-service.
+
+### Q3.7 Comparez avec la partie 1 : order-service a-t-il besoin qu'inventory-service soit allumé pour accepter une commande ?
+
+**Non.** order-service publie l'événement dans Kafka et répond 201 tout de suite, sans connaître inventory-service ni notification-service. Si l'un d'eux est arrêté, les messages attendent dans le topic, et il les lit à son redémarrage, à partir de sa dernière position.
+
+Nous l'avons vérifié : notification-service arrêté, trois commandes passées (201 à chaque fois), puis au redémarrage les trois e-mails sont partis.
+
+À la partie 1, c'était l'inverse : l'appel au catalogue est synchrone, donc sans catalog-service une commande est refusée (503). Le catalogue reste synchrone parce qu'on a besoin de sa réponse (le prix) pour créer la commande. Le stock et les notifications, eux, peuvent être prévenus après coup. On parle de **découplage dans le temps**.
+
+### Q3.8 Pourquoi --force-with-lease plutôt que --force ?
+
+Après un `git rebase`, l'historique local ne suit plus celui de la branche distante : il faut forcer le push.
+
+- `--force` écrase la branche distante **quoi qu'elle contienne**. Si le binôme a poussé un commit sur cette branche entre-temps (une correction après relecture, par exemple), ce commit est supprimé sans avertissement.
+- `--force-with-lease` n'écrase la branche que si elle est **encore dans l'état que l'on a vu** lors du dernier `git fetch`. Si quelqu'un a poussé depuis, le push est refusé : on récupère d'abord son travail, puis on recommence.
+
+`--force-with-lease` est donc un « force prudent » : il protège le travail du binôme.

@@ -1,0 +1,22 @@
+meta {
+  name: 7b - Stock du produit 8 inchangé
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{inventory}}/api/v1/stock/8
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  await bru.sleep(1000);
+}
+
+tests {
+  // Les logs d'inventory-service doivent afficher l'avertissement « Stock insuffisant »
+  test("quantity 2 : stock inchangé", function () {
+    expect(res.getBody().quantity).to.equal(2);
+  });
+}

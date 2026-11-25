@@ -1,0 +1,24 @@
+meta {
+  name: 4 - E-mail commande reçue
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{notification}}/api/v1/notifications
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  await bru.sleep(1000);
+}
+
+tests {
+  test("un e-mail « reçue » pour le client", function () {
+    const subject = "Commande n° " + bru.getVar("orderId") + " reçue";
+    const email = res.getBody().find(e => e.subject === subject);
+    expect(email, subject).to.exist;
+    expect(email.to).to.equal("c-kafka@shopflow.example");
+  });
+}

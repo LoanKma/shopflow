@@ -1,0 +1,18 @@
+meta {
+  name: 6b - E-mail commande annulée
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{notification}}/api/v1/notifications
+  body: none
+  auth: none
+}
+
+tests {
+  test("un e-mail « annulée » pour le client", function () {
+    const subject = "Commande n° " + bru.getVar("orderId") + " annulée";
+    expect(res.getBody().map(e => e.subject)).to.include(subject);
+  });
+}

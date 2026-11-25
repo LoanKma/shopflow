@@ -1,0 +1,20 @@
+meta {
+  name: Annuler la commande
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{order}}/api/v1/orders/{{orderId}}/cancel
+  body: none
+  auth: none
+}
+
+tests {
+  // Depuis Kafka, une commande retire vraiment du stock : on l'annule pour remettre le stock
+  // du produit 1 à 10, sinon les tests de stock lancés ensuite échoueraient.
+  test("200, statut CANCELLED", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().status).to.equal("CANCELLED");
+  });
+}

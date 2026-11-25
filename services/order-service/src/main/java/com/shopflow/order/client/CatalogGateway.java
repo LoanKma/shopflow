@@ -1,6 +1,7 @@
 package com.shopflow.order.client;
 
 import com.shopflow.order.exception.CatalogUnavailableException;
+import com.shopflow.order.exception.CircuitBreakerOpenException;
 import com.shopflow.order.exception.InvalidOrderException;
 import feign.FeignException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -50,9 +51,10 @@ public class CatalogGateway {
     /**
      * Méthode de repli appelée quand le circuit est ouvert.
      * Prend uniquement CallNotPermittedException pour ne pas intercepter les exceptions métier comme InvalidOrderException.
+     * Lève une CircuitBreakerOpenException (ignorée par le Retry) pour garantir un fail-fast immédiat (sans délai de retry).
      */
     public ProductView fallbackGetActiveProduct(Long productId, CallNotPermittedException e) {
         log.warn("Circuit ouvert lors de l'appel au catalogue pour le produit {} : {}", productId, e.getMessage());
-        throw new CatalogUnavailableException("Le circuit est ouvert : catalog-service est temporairement indisponible", e);
+        throw new CircuitBreakerOpenException("Le circuit est ouvert : catalog-service est temporairement indisponible", e);
     }
 }

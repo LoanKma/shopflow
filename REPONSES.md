@@ -55,6 +55,7 @@ En plus, l'historique de main ne contient que des fusions de PR : chaque changem
 - L'aspect `@Retry` ayant la priorité sur l'aspect `@CircuitBreaker`, il enveloppe ce dernier.
 - Lorsque le catalogue est arrêté et que le circuit est fermé, chaque appel initial d'`OrderService` déclenche jusqu'à 3 tentatives au niveau du Retry. Chaque tentative traverse le proxy du CircuitBreaker.
 - Pour une seule commande, le circuit breaker voit donc passer **3 appels** (1 appel initial + 2 retries).
+- **Optimisation pour le circuit ouvert :** Afin d'éviter que le Retry ne réessaie inutilement quand le circuit est déjà ouvert (ce qui ajouterait 600 ms de latence), la méthode de repli lève une `CircuitBreakerOpenException` configurée dans les `ignore-exceptions` du Retry. Ainsi, dès que le circuit est `OPEN`, la réponse 503 est retournée immédiatement en 0 ms (*fail-fast* pur).
 
 ### Q1.8 Votre binôme demande un changement après votre push. Faut-il ouvrir une nouvelle Pull Request ? Que faites-vous concrètement ?
 

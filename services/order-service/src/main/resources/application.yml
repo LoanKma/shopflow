@@ -73,6 +73,8 @@ resilience4j:
         wait-duration: 300ms
         ignore-exceptions:
           - com.shopflow.order.exception.InvalidOrderException
+          - com.shopflow.order.exception.CircuitBreakerOpenException
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
 
 springdoc:
   swagger-ui:

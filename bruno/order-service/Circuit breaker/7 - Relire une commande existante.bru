@@ -1,0 +1,23 @@
+meta {
+  name: 7 - Relire une commande existante
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{order}}/api/v1/orders/{{orderId}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  if (!bru.getVar("orderId")) {
+    bru.setVar("orderId", 1);
+  }
+}
+
+tests {
+  test("200 : relire une commande ne dépend pas du catalogue", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+}

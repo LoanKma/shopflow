@@ -1,0 +1,18 @@
+meta {
+  name: 3 - Circuit toujours CLOSED
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{order}}/actuator/circuitbreakers
+  body: none
+  auth: none
+}
+
+tests {
+  test("toujours CLOSED (les 422 sont ignorés)", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().circuitBreakers.catalog.state).to.equal("CLOSED");
+  });
+}

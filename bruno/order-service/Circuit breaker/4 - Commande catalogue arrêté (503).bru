@@ -1,0 +1,33 @@
+meta {
+  name: 4 - Commande catalogue arrêté (503)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{order}}/api/v1/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "customerId": "c-1",
+    "lines": [
+      {
+        "productId": 1,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+tests {
+  test("503 « Catalogue indisponible »", function () {
+    expect(res.getStatus()).to.equal(503);
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: 8 - Circuit HALF_OPEN (après 10s)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{order}}/actuator/circuitbreakers
+  body: none
+  auth: none
+}
+
+tests {
+  test("HALF_OPEN", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().circuitBreakers.catalog.state).to.equal("HALF_OPEN");
+  });
+}

@@ -1,0 +1,18 @@
+meta {
+  name: 1 - État initial CLOSED
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{order}}/actuator/circuitbreakers
+  body: none
+  auth: none
+}
+
+tests {
+  test("200, circuit catalog à CLOSED", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().circuitBreakers.catalog.state).to.equal("CLOSED");
+  });
+}

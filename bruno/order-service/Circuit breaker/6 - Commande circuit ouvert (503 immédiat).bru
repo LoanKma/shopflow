@@ -1,0 +1,34 @@
+meta {
+  name: 6 - Commande circuit ouvert (503 immédiat)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{order}}/api/v1/orders
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "customerId": "c-1",
+    "lines": [
+      {
+        "productId": 1,
+        "quantity": 1
+      }
+    ]
+  }
+}
+
+tests {
+  test("503 immédiat, message « circuit ouvert »", function () {
+    expect(res.getStatus()).to.equal(503);
+    expect(res.getBody().detail).to.include("circuit est ouvert");
+  });
+}

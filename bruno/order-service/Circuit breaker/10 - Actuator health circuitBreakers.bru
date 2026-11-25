@@ -1,0 +1,18 @@
+meta {
+  name: 10 - Actuator health circuitBreakers
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{order}}/actuator/health
+  body: none
+  auth: none
+}
+
+tests {
+  test("composant circuitBreakers dans la réponse", function () {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().components.circuitBreakers).to.exist;
+  });
+}

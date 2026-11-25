@@ -1,0 +1,25 @@
+meta {
+  name: Envoyer une notification
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{notification}}/api/v1/notifications
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "to": "c-1@shopflow.example",
+    "subject": "Commande reçue",
+    "body": "Merci pour votre commande."
+  }
+}
+
+tests {
+  test("202", function () {
+    expect(res.getStatus()).to.equal(202);
+  });
+}
